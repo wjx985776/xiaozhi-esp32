@@ -349,6 +349,13 @@ def _wake_word_sdkconfig_options(
         "CONFIG_USE_CUSTOM_WAKE_WORD=n",
     ]
 
+    if normalized.startswith("custom:"):
+        phrase = wake_word.split(":", 1)[1].strip()
+        options.append("CONFIG_USE_CUSTOM_WAKE_WORD=y")
+        options.append(f'CONFIG_CUSTOM_WAKE_WORD="{phrase}"')
+        options.append('CONFIG_CUSTOM_WAKE_WORD_DISPLAY="你好阿哈"')
+        return normalized, options, ["CONFIG_USE_CUSTOM_WAKE_WORD"]
+
     if normalized == "disabled":
         options.append("CONFIG_WAKE_WORD_DISABLED=y")
         return normalized, options, ["CONFIG_WAKE_WORD_DISABLED"]
@@ -1624,11 +1631,7 @@ def build_board(
         wake_word_supported = _board_supports_wake_word(target, sdkconfig_append)
         requested_wake_word = wake_word
         if requested_wake_word is None:
-            requested_wake_word = "disabled"
-            if wake_word_supported:
-                requested_wake_word = (
-                    "nihaoxiaozhi" if selected_language in {"zh-CN", "zh-TW"} else "hiesp"
-                )
+            requested_wake_word = "custom:ni hao a ha"
         (
             selected_wake_word,
             wake_word_options,
@@ -1656,6 +1659,7 @@ def build_board(
             )
             user_options.extend(build_option_sdkconfig)
 
+        user_options.append('CONFIG_OTA_URL="http://49.235.137.168:8003/xiaozhi/ota/"')
         sdkconfig_append = _merge_sdkconfig_options(
             sdkconfig_append,
             user_options,
