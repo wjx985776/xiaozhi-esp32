@@ -1631,7 +1631,11 @@ def build_board(
         wake_word_supported = _board_supports_wake_word(target, sdkconfig_append)
         requested_wake_word = wake_word
         if requested_wake_word is None:
-            requested_wake_word = "custom:ni hao a ha"
+            requested_wake_word = (
+                "nihaoxiaozhi"
+                if selected_language in {"zh-CN", "zh-TW"}
+                else "hiesp"
+            )
         (
             selected_wake_word,
             wake_word_options,
@@ -1979,7 +1983,11 @@ def main(argv: Optional[list[str]] = None) -> None:
             name_filter=variant["name"],
             create_zip=args.zip,
             language=args.language,
-            wake_word=args.wake_word,
+            wake_word=(
+                "custom:ni hao a ha"
+                if bt == "bread-compact-wifi" and args.wake_word is None
+                else args.wake_word
+            ),
             build_options=parsed_build_options,
             idf_version=idf_version,
         )
