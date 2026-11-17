@@ -352,9 +352,15 @@ def _wake_word_sdkconfig_options(
     if normalized.startswith("custom:"):
         phrase = wake_word.split(":", 1)[1].strip()
         options.append("CONFIG_USE_CUSTOM_WAKE_WORD=y")
+        # Custom wake words ride on the MultiNet multi-command model; ESP-SR
+        # refuses to build USE_CUSTOM_WAKE_WORD without one selected.
+        options.append("CONFIG_SR_MN_CN_MULTINET6_QUANT=y")
         options.append(f'CONFIG_CUSTOM_WAKE_WORD="{phrase}"')
         options.append('CONFIG_CUSTOM_WAKE_WORD_DISPLAY="你好阿哈"')
-        return normalized, options, ["CONFIG_USE_CUSTOM_WAKE_WORD"]
+        return normalized, options, [
+            "CONFIG_USE_CUSTOM_WAKE_WORD",
+            "CONFIG_SR_MN_CN_MULTINET6_QUANT",
+        ]
 
     if normalized == "disabled":
         options.append("CONFIG_WAKE_WORD_DISABLED=y")
