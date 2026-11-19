@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# 唤醒词自定义版本：MultiNet + 阈值 80（降低误唤醒）
 
 import sys
 import os
