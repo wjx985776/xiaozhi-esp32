@@ -357,6 +357,8 @@ def _wake_word_sdkconfig_options(
         options.append("CONFIG_SR_MN_CN_MULTINET6_QUANT=y")
         options.append(f'CONFIG_CUSTOM_WAKE_WORD="{phrase}"')
         options.append('CONFIG_CUSTOM_WAKE_WORD_DISPLAY="你好阿哈"')
+        # 默认阈值 20 太灵敏，环境噪声也会触发；调到 80 要喊清楚才认
+        options.append("CONFIG_CUSTOM_WAKE_WORD_THRESHOLD=80")
         return normalized, options, [
             "CONFIG_USE_CUSTOM_WAKE_WORD",
             "CONFIG_SR_MN_CN_MULTINET6_QUANT",
