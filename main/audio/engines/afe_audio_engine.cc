@@ -181,7 +181,9 @@ bool AfeAudioEngine::Initialize(AudioCodec* codec, int frame_duration_ms,
             }
         }
     }
-    afe_config->agc_init = false;
+    // [DSH] 打开 AGC：面包板的 >>12 让麦克风信号只有满量程 10%，
+    // 近距离削波、远距离识别不出，交给 AGC 自适应拉平。
+    afe_config->agc_init = true;
     afe_config->memory_alloc_mode = AFE_MEMORY_ALLOC_MORE_PSRAM;
 
     ESP_LOGI(TAG, "Before AFE create: free=%u min=%u largest=%u",
