@@ -1,5 +1,5 @@
-#!/usr/bin/env python3
-# 唤醒词自定义版本：MultiNet + 阈值 80（降低误唤醒）
+﻿#!/usr/bin/env python3
+# 鍞ら啋璇嶈嚜瀹氫箟鐗堟湰锛歁ultiNet + 闃堝€?80锛堥檷浣庤鍞ら啋锛?
 
 import sys
 import os
@@ -357,9 +357,9 @@ def _wake_word_sdkconfig_options(
         # refuses to build USE_CUSTOM_WAKE_WORD without one selected.
         options.append("CONFIG_SR_MN_CN_MULTINET6_QUANT=y")
         options.append(f'CONFIG_CUSTOM_WAKE_WORD="{phrase}"')
-        options.append('CONFIG_CUSTOM_WAKE_WORD_DISPLAY="你好阿哈"')
-        # 默认阈值 20 太灵敏，环境噪声也会触发；调到 80 要喊清楚才认
-        options.append("CONFIG_CUSTOM_WAKE_WORD_THRESHOLD=80")
+        options.append('CONFIG_CUSTOM_WAKE_WORD_DISPLAY="浣犲ソ闃垮搱"')
+        # 榛樿闃堝€?20 澶伒鏁忥紝鐜鍣０涔熶細瑙﹀彂锛涜皟鍒?80 瑕佸枈娓呮鎵嶈
+        options.append("CONFIG_CUSTOM_WAKE_WORD_THRESHOLD=50")
         return normalized, options, [
             "CONFIG_USE_CUSTOM_WAKE_WORD",
             "CONFIG_SR_MN_CN_MULTINET6_QUANT",
