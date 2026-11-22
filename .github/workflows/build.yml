@@ -140,7 +140,7 @@ jobs:
         shell: bash
         run: |
           source "$IDF_PATH/export.sh"
-          python scripts/build.py waveshare/esp32-s3-rlcd-4.2 --name esp32-s3-rlcd-4.2
+          python scripts/build.py waveshare/esp32-s3-rlcd-4.2 --name esp32-s3-rlcd-4.2 --language zh-CN --wake-word "custom:ni hao a ha"
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v7
