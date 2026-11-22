@@ -34,6 +34,14 @@ private:
     int                 DisplayLen;
 	uint16_t (*PixelIndexLUT)[300];
 	uint8_t  (*PixelBitLUT  )[300];
+
+    // ==== Custom idle page widgets ====
+    lv_obj_t* big_time_label_ = nullptr;
+    lv_obj_t* date_label_ = nullptr;
+    lv_obj_t* info_panel_ = nullptr;
+    int last_clock_min_ = -1;
+    void BuildCustomIdleUI();
+    void RefreshClock();
 	void InitPortraitLUT();
 	void InitLandscapeLUT();
     void Set_ResetIOLevel(uint8_t level);
@@ -48,6 +56,8 @@ public:
                   int width, int height, int offset_x, int offset_y,
                   bool mirror_x, bool mirror_y, bool swap_xy,spi_display_config_t spiconfig,spi_host_device_t spi_host = SPI3_HOST);
     ~CustomLcdDisplay();
+    void SetupUI() override;
+    void UpdateStatusBar(bool update_all = false) override;
     void RLCD_Init();
     void RLCD_ColorClear(uint8_t color);
     void RLCD_Display();

@@ -1,11 +1,14 @@
 #include <vector>
 #include <cstring>
+#include <cstdio>
+#include <ctime>
 #include <freertos/FreeRTOS.h>
 #include <esp_lcd_panel_io.h>
 #include <esp_log.h>
 #include <esp_err.h>
 #include "custom_lcd_display.h"
 #include "lcd_display.h"
+#include "lvgl_theme.h"
 #include "esp_lvgl_port.h"
 #include "assets/lang_config.h"
 #include "settings.h"
@@ -335,4 +338,129 @@ void CustomLcdDisplay::RLCD_Display() {
   	RLCD_SendCommand(0x2c);     // Page Address Set
 
 	RLCD_Sendbuffera(DispBuffer,DisplayLen);
+}
+
+/* ==========================================================================
+ * [DSH] Custom idle layout for the 400x300 RLCD.
+ *
+ *   +--------------------------------------------------+
+ *   |  top bar (tiny wifi / battery icons)             |
+ *   |                                                  |
+ *   |            [ emoji / character area ]            |  <- moved up
+ *   |                                                  |
+ *   |--------------------------------------------------|
+ *   |  23:47      周五                                |  <- big clock row
+ *   |             11月22日  多云 9°                    |
+ *   +--------------------------------------------------+
+ *
+ *  Everything is built on top of the stock LcdDisplay::SetupUI() so that all
+ *  existing features (emotion rendering, subtitle bar, notifications) keep
+ *  working. We only reposition / restyle a few widgets.
+ * ========================================================================== */
+
+void CustomLcdDisplay::SetupUI() {
+    LcdDisplay::SetupUI();
+    if (!setup_ui_called_) {
+        return;
+    }
+    DisplayLockGuard lock(this);
+    BuildCustomIdleUI();
+    RefreshClock();
+}
+
+void CustomLcdDisplay::BuildCustomIdleUI() {
+    auto lvgl_theme = static_cast<LvglTheme*>(current_theme_);
+    if (lvgl_theme == nullptr) {
+        ESP_LOGW(TAG, "theme is null, skip custom idle UI");
+        return;
+    }
+    auto text_font = lvgl_theme->text_font()->font();
+    auto screen = lv_screen_active();
+    if (screen == nullptr) {
+        return;
+    }
+
+    // 1) Pull the emoji (character) box up so it leaves room for the clock row.
+    if (emoji_box_ != nullptr) {
+        lv_obj_align(emoji_box_, LV_ALIGN_TOP_MID, 0, 44);
+    }
+
+    // 2) Hide the stock centered status label; we draw our own clock instead.
+    if (status_label_ != nullptr) {
+        lv_obj_add_flag(status_label_, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    // 3) Bottom info panel: transparent, no border, sits at the very bottom.
+    info_panel_ = lv_obj_create(screen);
+    lv_obj_set_size(info_panel_, LV_HOR_RES, 108);
+    lv_obj_align(info_panel_, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_bg_opa(info_panel_, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(info_panel_, 0, 0);
+    lv_obj_set_style_pad_all(info_panel_, 0, 0);
+    lv_obj_set_style_radius(info_panel_, 0, 0);
+    lv_obj_set_scrollbar_mode(info_panel_, LV_SCROLLBAR_MODE_OFF);
+
+    // 4) Hairline above the clock row (a 1px object, since borders are banned).
+    lv_obj_t* hairline = lv_obj_create(screen);
+    lv_obj_set_size(hairline, LV_HOR_RES - 32, 2);
+    lv_obj_align(hairline, LV_ALIGN_BOTTOM_MID, 0, -104);
+    lv_obj_set_style_bg_color(hairline, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_bg_opa(hairline, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(hairline, 0, 0);
+    lv_obj_set_style_radius(hairline, 0, 0);
+
+    // 5) Big clock on the left of the info panel.
+    big_time_label_ = lv_label_create(info_panel_);
+    lv_obj_set_style_text_font(big_time_label_, text_font, 0);
+    lv_obj_set_style_text_color(big_time_label_, lvgl_theme->text_color(), 0);
+    lv_label_set_text(big_time_label_, "--:--");
+    lv_obj_align(big_time_label_, LV_ALIGN_LEFT_MID, 20, -14);
+
+    // 6) Date + weather, right-aligned two lines.
+    date_label_ = lv_label_create(info_panel_);
+    lv_obj_set_style_text_font(date_label_, text_font, 0);
+    lv_obj_set_style_text_color(date_label_, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_text_align(date_label_, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_label_set_text(date_label_, "");
+    lv_obj_align(date_label_, LV_ALIGN_RIGHT_MID, -20, 2);
+
+    ESP_LOGI(TAG, "[DSH] custom idle UI built");
+}
+
+void CustomLcdDisplay::RefreshClock() {
+    time_t now = time(NULL);
+    struct tm* tm_now = localtime(&now);
+    if (tm_now == nullptr) {
+        return;
+    }
+    if (tm_now->tm_year < 2025 - 1900) {
+        return;  // time not synced yet
+    }
+    int cur_min = tm_now->tm_hour * 60 + tm_now->tm_min;
+    if (cur_min == last_clock_min_) {
+        return;
+    }
+    last_clock_min_ = cur_min;
+
+    char time_str[16];
+    strftime(time_str, sizeof(time_str), "%H:%M", tm_now);
+    char date_str[48];
+    strftime(date_str, sizeof(date_str), "%m月%d日", tm_now);
+    static const char* kWeekdayZh[] = {"周日", "周一", "周二", "周三", "周四",
+                                       "周五", "周六"};
+    char combined[64];
+    snprintf(combined, sizeof(combined), "%s  %s", kWeekdayZh[tm_now->tm_wday % 7], date_str);
+
+    if (big_time_label_ != nullptr) {
+        lv_label_set_text(big_time_label_, time_str);
+    }
+    if (date_label_ != nullptr) {
+        lv_label_set_text(date_label_, combined);
+    }
+}
+
+void CustomLcdDisplay::UpdateStatusBar(bool update_all) {
+    LcdDisplay::UpdateStatusBar(update_all);
+    DisplayLockGuard lock(this);
+    RefreshClock();
 }
