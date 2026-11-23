@@ -359,13 +359,9 @@ void CustomLcdDisplay::RLCD_Display() {
  * ========================================================================== */
 
 void CustomLcdDisplay::SetupUI() {
+    // [DSH] bisect: stock UI only, no customisation.
     LcdDisplay::SetupUI();
-    if (!setup_ui_called_) {
-        return;
-    }
-    DisplayLockGuard lock(this);
-    ApplyIdleLayout();
-    RefreshClock();
+    ESP_LOGI(TAG, "[DSH] SetupUI stock only");
 }
 
 void CustomLcdDisplay::ApplyIdleLayout() {
