@@ -159,6 +159,15 @@ public:
     }
 
     virtual bool GetBatteryLevel(int &level, bool& charging, bool& discharging) override {
+        // [DSH] This board ships without an 18650 cell by default. The stock
+        // implementation always claims a battery is present, so an empty bay
+        // reads 0 mV and the UI keeps nagging "low battery". Treat anything
+        // below the Li-ion cutoff as "no battery" and stay silent.
+        int mv = (int)BatterygetVoltage();
+        if (mv < 3300) {
+            return false;
+        }
+
         charging = false;
         discharging = !charging;
         level = (int)BatterygetPercent();
