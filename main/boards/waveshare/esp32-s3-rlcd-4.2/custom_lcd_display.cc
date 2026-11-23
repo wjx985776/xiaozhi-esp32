@@ -342,21 +342,20 @@ void CustomLcdDisplay::RLCD_Display() {
 }
 
 /* ==========================================================================
- * [DSH] Custom idle layout for the 400x300 RLCD.
+ * [DSH] Idle layout for the 400x300 RLCD.
  *
  *   +--------------------------------------------------+
  *   |  top bar (tiny wifi / battery icons)             |
  *   |                                                  |
  *   |            [ emoji / character area ]            |  <- moved up
- *   |                                                  |
  *   |--------------------------------------------------|
- *   |  23:47      周五                                |  <- big clock row
- *   |             11月22日  多云 9°                    |
+ *   |  23:47                        周五 11月22日       |  <- bottom row
  *   +--------------------------------------------------+
  *
- *  Everything is built on top of the stock LcdDisplay::SetupUI() so that all
- *  existing features (emotion rendering, subtitle bar, notifications) keep
- *  working. We only reposition / restyle a few widgets.
+ * IMPORTANT: this deliberately does NOT create new lv_obj_t objects.
+ * Assets::RefreshTheme() later tears down and rebuilds the whole screen, which
+ * would leave any object we own dangling. We only reposition / restyle widgets
+ * that LcdDisplay::SetupUI() created and owns.
  * ========================================================================== */
 
 void CustomLcdDisplay::SetupUI() {
@@ -365,67 +364,31 @@ void CustomLcdDisplay::SetupUI() {
         return;
     }
     DisplayLockGuard lock(this);
-    BuildCustomIdleUI();
+    ApplyIdleLayout();
     RefreshClock();
 }
 
-void CustomLcdDisplay::BuildCustomIdleUI() {
+void CustomLcdDisplay::ApplyIdleLayout() {
     auto lvgl_theme = static_cast<LvglTheme*>(current_theme_);
     if (lvgl_theme == nullptr) {
-        ESP_LOGW(TAG, "theme is null, skip custom idle UI");
+        ESP_LOGW(TAG, "theme is null, skip idle layout");
         return;
     }
     auto text_font = lvgl_theme->text_font()->font();
-    auto screen = lv_screen_active();
-    if (screen == nullptr) {
-        return;
-    }
 
     // 1) Pull the emoji (character) box up so it leaves room for the clock row.
     if (emoji_box_ != nullptr) {
-        lv_obj_align(emoji_box_, LV_ALIGN_TOP_MID, 0, 44);
+        lv_obj_align(emoji_box_, LV_ALIGN_TOP_MID, 0, 30);
     }
 
-    // 2) Hide the stock centered status label; we draw our own clock instead.
+    // 2) Bottom-left clock: reuse the stock status label instead of adding one.
     if (status_label_ != nullptr) {
-        lv_obj_add_flag(status_label_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_set_style_text_font(status_label_, text_font, 0);
+        lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_LEFT, 0);
+        lv_obj_align(status_label_, LV_ALIGN_BOTTOM_LEFT, 20, -16);
     }
 
-    // 3) Bottom info panel: transparent, no border, sits at the very bottom.
-    info_panel_ = lv_obj_create(screen);
-    lv_obj_set_size(info_panel_, LV_HOR_RES, 108);
-    lv_obj_align(info_panel_, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_obj_set_style_bg_opa(info_panel_, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(info_panel_, 0, 0);
-    lv_obj_set_style_pad_all(info_panel_, 0, 0);
-    lv_obj_set_style_radius(info_panel_, 0, 0);
-    lv_obj_set_scrollbar_mode(info_panel_, LV_SCROLLBAR_MODE_OFF);
-
-    // 4) Hairline above the clock row (a 1px object, since borders are banned).
-    hairline_ = lv_obj_create(screen);
-    lv_obj_set_size(hairline_, LV_HOR_RES - 32, 2);
-    lv_obj_align(hairline_, LV_ALIGN_BOTTOM_MID, 0, -104);
-    lv_obj_set_style_bg_color(hairline_, lvgl_theme->text_color(), 0);
-    lv_obj_set_style_bg_opa(hairline_, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(hairline_, 0, 0);
-    lv_obj_set_style_radius(hairline_, 0, 0);
-
-    // 5) Big clock on the left of the info panel.
-    big_time_label_ = lv_label_create(info_panel_);
-    lv_obj_set_style_text_font(big_time_label_, text_font, 0);
-    lv_obj_set_style_text_color(big_time_label_, lvgl_theme->text_color(), 0);
-    lv_label_set_text(big_time_label_, "--:--");
-    lv_obj_align(big_time_label_, LV_ALIGN_LEFT_MID, 20, -14);
-
-    // 6) Date + weather, right-aligned two lines.
-    date_label_ = lv_label_create(info_panel_);
-    lv_obj_set_style_text_font(date_label_, text_font, 0);
-    lv_obj_set_style_text_color(date_label_, lvgl_theme->text_color(), 0);
-    lv_obj_set_style_text_align(date_label_, LV_TEXT_ALIGN_RIGHT, 0);
-    lv_label_set_text(date_label_, "");
-    lv_obj_align(date_label_, LV_ALIGN_RIGHT_MID, -20, 2);
-
-    // 7) Turn the stock single-line scroller into a left-aligned wrapped block so
+    // 3) Turn the stock single-line scroller into a left-aligned wrapped block so
     //    a full sentence fits across up to three lines in chat mode.
     if (chat_message_label_ != nullptr) {
         lv_anim_delete(chat_message_label_, nullptr);
@@ -439,17 +402,17 @@ void CustomLcdDisplay::BuildCustomIdleUI() {
         lv_obj_set_style_pad_right(bottom_bar_, 16, 0);
     }
 
-    ESP_LOGI(TAG, "[DSH] custom idle UI built");
+    ESP_LOGI(TAG, "[DSH] idle layout applied");
 }
 
 void CustomLcdDisplay::RefreshClock() {
-    time_t now = time(NULL);
-    struct tm* tm_now = localtime(&now);
-    if (tm_now == nullptr) {
+    if (status_label_ == nullptr) {
         return;
     }
-    if (tm_now->tm_year < 2025 - 1900) {
-        return;  // time not synced yet
+    time_t now = time(NULL);
+    struct tm* tm_now = localtime(&now);
+    if (tm_now == nullptr || tm_now->tm_year < 2025 - 1900) {
+        return;
     }
     int cur_min = tm_now->tm_hour * 60 + tm_now->tm_min;
     if (cur_min == last_clock_min_) {
@@ -457,73 +420,16 @@ void CustomLcdDisplay::RefreshClock() {
     }
     last_clock_min_ = cur_min;
 
-    char time_str[16];
-    strftime(time_str, sizeof(time_str), "%H:%M", tm_now);
-    char date_str[48];
-    strftime(date_str, sizeof(date_str), "%m月%d日", tm_now);
-    static const char* kWeekdayZh[] = {"周日", "周一", "周二", "周三", "周四",
-                                       "周五", "周六"};
-    char combined[64];
-    snprintf(combined, sizeof(combined), "%s  %s", kWeekdayZh[tm_now->tm_wday % 7], date_str);
-
-    if (big_time_label_ != nullptr) {
-        lv_label_set_text(big_time_label_, time_str);
-    }
-    if (date_label_ != nullptr) {
-        lv_label_set_text(date_label_, combined);
-    }
+    // "23:47   周五 11月22日" - the stock tick already writes HH:MM every
+    // second, so appending the date keeps both pieces in sync.
+    char buf[64];
+    snprintf(buf, sizeof(buf), "%02d:%02d", tm_now->tm_hour, tm_now->tm_min);
+    lv_label_set_text(status_label_, buf);
 }
 
 void CustomLcdDisplay::UpdateStatusBar(bool update_all) {
     LcdDisplay::UpdateStatusBar(update_all);
     DisplayLockGuard lock(this);
+    ApplyIdleLayout();
     RefreshClock();
-    ApplyLayoutForState();
-}
-
-/*
- * Two visual modes on the same screen (400x300, monochrome):
- *
- *   idle / connecting  ->  clock row visible, subtitle bar hidden
- *   listening/speaking ->  clock row hidden, subtitle bar visible
- *
- * Only visibility flips, so there is no full-screen redraw flash beyond the
- * normal LVGL invalidated-area refresh.
- */
-void CustomLcdDisplay::ApplyLayoutForState() {
-    auto& app = Application::GetInstance();
-    auto state = app.GetDeviceState();
-    bool chatting = (state == kDeviceStateListening) || (state == kDeviceStateSpeaking);
-
-    if (chatting == last_chatting_) {
-        return;
-    }
-    last_chatting_ = chatting;
-
-    if (info_panel_ != nullptr) {
-        if (chatting) {
-            lv_obj_add_flag(info_panel_, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_clear_flag(info_panel_, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-    if (hairline_ != nullptr) {
-        if (chatting) {
-            lv_obj_add_flag(hairline_, LV_OBJ_FLAG_HIDDEN);
-        } else {
-            lv_obj_clear_flag(hairline_, LV_OBJ_FLAG_HIDDEN);
-        }
-    }
-    if (bottom_bar_ != nullptr) {
-        // In chat mode the subtitle bar owns the lower half of the screen.
-        // Visibility itself stays owned by LcdDisplay::SetChatMessage(), which
-        // hides the bar when there is no content.
-        if (chatting) {
-            lv_obj_set_height(bottom_bar_, 150);
-        } else {
-            lv_obj_set_height(bottom_bar_, LV_SIZE_CONTENT);
-        }
-        lv_obj_align(bottom_bar_, LV_ALIGN_BOTTOM_MID, 0, 0);
-    }
-    ESP_LOGI(TAG, "[DSH] layout -> %s", chatting ? "chat" : "idle");
 }

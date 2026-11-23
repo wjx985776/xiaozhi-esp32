@@ -35,16 +35,10 @@ private:
 	uint16_t (*PixelIndexLUT)[300];
 	uint8_t  (*PixelBitLUT  )[300];
 
-    // ==== Custom idle page widgets ====
-    lv_obj_t* big_time_label_ = nullptr;
-    lv_obj_t* date_label_ = nullptr;
-    lv_obj_t* info_panel_ = nullptr;
-    lv_obj_t* hairline_ = nullptr;
+    // ==== [DSH] idle layout (reuses stock widgets, owns no new objects) ====
     int last_clock_min_ = -1;
-    bool last_chatting_ = false;
-    void BuildCustomIdleUI();
+    void ApplyIdleLayout();
     void RefreshClock();
-    void ApplyLayoutForState();
 	void InitPortraitLUT();
 	void InitLandscapeLUT();
     void Set_ResetIOLevel(uint8_t level);
