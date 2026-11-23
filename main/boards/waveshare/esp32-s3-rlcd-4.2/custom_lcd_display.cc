@@ -14,6 +14,7 @@
 #include "settings.h"
 #include "config.h"
 #include "board.h"
+#include "application.h"
 
 void CustomLcdDisplay::Lvgl_flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * color_p)
 {
@@ -401,13 +402,13 @@ void CustomLcdDisplay::BuildCustomIdleUI() {
     lv_obj_set_scrollbar_mode(info_panel_, LV_SCROLLBAR_MODE_OFF);
 
     // 4) Hairline above the clock row (a 1px object, since borders are banned).
-    lv_obj_t* hairline = lv_obj_create(screen);
-    lv_obj_set_size(hairline, LV_HOR_RES - 32, 2);
-    lv_obj_align(hairline, LV_ALIGN_BOTTOM_MID, 0, -104);
-    lv_obj_set_style_bg_color(hairline, lvgl_theme->text_color(), 0);
-    lv_obj_set_style_bg_opa(hairline, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(hairline, 0, 0);
-    lv_obj_set_style_radius(hairline, 0, 0);
+    hairline_ = lv_obj_create(screen);
+    lv_obj_set_size(hairline_, LV_HOR_RES - 32, 2);
+    lv_obj_align(hairline_, LV_ALIGN_BOTTOM_MID, 0, -104);
+    lv_obj_set_style_bg_color(hairline_, lvgl_theme->text_color(), 0);
+    lv_obj_set_style_bg_opa(hairline_, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(hairline_, 0, 0);
+    lv_obj_set_style_radius(hairline_, 0, 0);
 
     // 5) Big clock on the left of the info panel.
     big_time_label_ = lv_label_create(info_panel_);
@@ -423,6 +424,20 @@ void CustomLcdDisplay::BuildCustomIdleUI() {
     lv_obj_set_style_text_align(date_label_, LV_TEXT_ALIGN_RIGHT, 0);
     lv_label_set_text(date_label_, "");
     lv_obj_align(date_label_, LV_ALIGN_RIGHT_MID, -20, 2);
+
+    // 7) Turn the stock single-line scroller into a left-aligned wrapped block so
+    //    a full sentence fits across up to three lines in chat mode.
+    if (chat_message_label_ != nullptr) {
+        lv_anim_delete(chat_message_label_, nullptr);
+        lv_label_set_long_mode(chat_message_label_, LV_LABEL_LONG_WRAP);
+        lv_obj_set_width(chat_message_label_, LV_HOR_RES - 32);
+        lv_obj_set_style_text_align(chat_message_label_, LV_TEXT_ALIGN_LEFT, 0);
+        lv_obj_set_style_text_font(chat_message_label_, text_font, 0);
+    }
+    if (bottom_bar_ != nullptr) {
+        lv_obj_set_style_pad_left(bottom_bar_, 16, 0);
+        lv_obj_set_style_pad_right(bottom_bar_, 16, 0);
+    }
 
     ESP_LOGI(TAG, "[DSH] custom idle UI built");
 }
@@ -463,4 +478,52 @@ void CustomLcdDisplay::UpdateStatusBar(bool update_all) {
     LcdDisplay::UpdateStatusBar(update_all);
     DisplayLockGuard lock(this);
     RefreshClock();
+    ApplyLayoutForState();
+}
+
+/*
+ * Two visual modes on the same screen (400x300, monochrome):
+ *
+ *   idle / connecting  ->  clock row visible, subtitle bar hidden
+ *   listening/speaking ->  clock row hidden, subtitle bar visible
+ *
+ * Only visibility flips, so there is no full-screen redraw flash beyond the
+ * normal LVGL invalidated-area refresh.
+ */
+void CustomLcdDisplay::ApplyLayoutForState() {
+    auto& app = Application::GetInstance();
+    auto state = app.GetDeviceState();
+    bool chatting = (state == kDeviceStateListening) || (state == kDeviceStateSpeaking);
+
+    if (chatting == last_chatting_) {
+        return;
+    }
+    last_chatting_ = chatting;
+
+    if (info_panel_ != nullptr) {
+        if (chatting) {
+            lv_obj_add_flag(info_panel_, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_clear_flag(info_panel_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (hairline_ != nullptr) {
+        if (chatting) {
+            lv_obj_add_flag(hairline_, LV_OBJ_FLAG_HIDDEN);
+        } else {
+            lv_obj_clear_flag(hairline_, LV_OBJ_FLAG_HIDDEN);
+        }
+    }
+    if (bottom_bar_ != nullptr) {
+        // In chat mode the subtitle bar owns the lower half of the screen.
+        // Visibility itself stays owned by LcdDisplay::SetChatMessage(), which
+        // hides the bar when there is no content.
+        if (chatting) {
+            lv_obj_set_height(bottom_bar_, 150);
+        } else {
+            lv_obj_set_height(bottom_bar_, LV_SIZE_CONTENT);
+        }
+        lv_obj_align(bottom_bar_, LV_ALIGN_BOTTOM_MID, 0, 0);
+    }
+    ESP_LOGI(TAG, "[DSH] layout -> %s", chatting ? "chat" : "idle");
 }

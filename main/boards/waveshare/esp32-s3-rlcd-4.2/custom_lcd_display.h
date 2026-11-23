@@ -39,9 +39,12 @@ private:
     lv_obj_t* big_time_label_ = nullptr;
     lv_obj_t* date_label_ = nullptr;
     lv_obj_t* info_panel_ = nullptr;
+    lv_obj_t* hairline_ = nullptr;
     int last_clock_min_ = -1;
+    bool last_chatting_ = false;
     void BuildCustomIdleUI();
     void RefreshClock();
+    void ApplyLayoutForState();
 	void InitPortraitLUT();
 	void InitLandscapeLUT();
     void Set_ResetIOLevel(uint8_t level);
