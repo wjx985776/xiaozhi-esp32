@@ -15,6 +15,7 @@
 #include "config.h"
 #include "board.h"
 #include "application.h"
+#include "avatar_img.h"
 
 void CustomLcdDisplay::Lvgl_flush_cb(lv_display_t * disp, const lv_area_t * area, uint8_t * color_p)
 {
@@ -377,6 +378,18 @@ void CustomLcdDisplay::ApplyIdleLayout() {
     // 1) Keep the emoji box centred but a little lower, clear of the top bar.
     if (emoji_box_ != nullptr) {
         lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, 10);
+
+        // [DSH] Replace the stock robot glyph with the character portrait.
+        // emoji_label_ belongs to LcdDisplay; hide it instead of deleting it.
+        if (emoji_label_ != nullptr) {
+            lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
+        }
+        if (avatar_obj_ == nullptr || !lv_obj_is_valid(avatar_obj_)) {
+            avatar_obj_ = lv_image_create(emoji_box_);
+            lv_image_set_src(avatar_obj_, &avatar_img);
+            lv_obj_center(avatar_obj_);
+            ESP_LOGI(TAG, "[DSH] avatar image attached");
+        }
     }
 
     // 2) Subtitle: left-aligned, wrapped, full width. The bar itself is owned
