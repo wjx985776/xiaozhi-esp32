@@ -359,33 +359,28 @@ void CustomLcdDisplay::RLCD_Display() {
  * ========================================================================== */
 
 void CustomLcdDisplay::SetupUI() {
-    // [DSH] bisect: stock UI only, no customisation.
+    // [DSH] Stock UI only. Any widget tweak happens from ApplyIdleLayout(),
+    // which runs once the runtime theme is ready (see UpdateStatusBar).
     LcdDisplay::SetupUI();
-    ESP_LOGI(TAG, "[DSH] SetupUI stock only");
 }
 
 void CustomLcdDisplay::ApplyIdleLayout() {
+    if (layout_done_) {
+        return;
+    }
     auto lvgl_theme = static_cast<LvglTheme*>(current_theme_);
     if (lvgl_theme == nullptr) {
-        ESP_LOGW(TAG, "theme is null, skip idle layout");
         return;
     }
     auto text_font = lvgl_theme->text_font()->font();
 
-    // 1) Pull the emoji (character) box up so it leaves room for the clock row.
+    // 1) Keep the emoji box centred but a little lower, clear of the top bar.
     if (emoji_box_ != nullptr) {
-        lv_obj_align(emoji_box_, LV_ALIGN_TOP_MID, 0, 30);
+        lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, 10);
     }
 
-    // 2) Bottom-left clock: reuse the stock status label instead of adding one.
-    if (status_label_ != nullptr) {
-        lv_obj_set_style_text_font(status_label_, text_font, 0);
-        lv_obj_set_style_text_align(status_label_, LV_TEXT_ALIGN_LEFT, 0);
-        lv_obj_align(status_label_, LV_ALIGN_BOTTOM_LEFT, 20, -16);
-    }
-
-    // 3) Turn the stock single-line scroller into a left-aligned wrapped block so
-    //    a full sentence fits across up to three lines in chat mode.
+    // 2) Subtitle: left-aligned, wrapped, full width. The bar itself is owned
+    //    by LcdDisplay and already anchored to the bottom of the screen.
     if (chat_message_label_ != nullptr) {
         lv_anim_delete(chat_message_label_, nullptr);
         lv_label_set_long_mode(chat_message_label_, LV_LABEL_LONG_WRAP);
@@ -398,34 +393,16 @@ void CustomLcdDisplay::ApplyIdleLayout() {
         lv_obj_set_style_pad_right(bottom_bar_, 16, 0);
     }
 
+    layout_done_ = true;
     ESP_LOGI(TAG, "[DSH] idle layout applied");
 }
 
 void CustomLcdDisplay::RefreshClock() {
-    if (status_label_ == nullptr) {
-        return;
-    }
-    time_t now = time(NULL);
-    struct tm* tm_now = localtime(&now);
-    if (tm_now == nullptr || tm_now->tm_year < 2025 - 1900) {
-        return;
-    }
-    int cur_min = tm_now->tm_hour * 60 + tm_now->tm_min;
-    if (cur_min == last_clock_min_) {
-        return;
-    }
-    last_clock_min_ = cur_min;
-
-    // "23:47   周五 11月22日" - the stock tick already writes HH:MM every
-    // second, so appending the date keeps both pieces in sync.
-    char buf[64];
-    snprintf(buf, sizeof(buf), "%02d:%02d", tm_now->tm_hour, tm_now->tm_min);
-    lv_label_set_text(status_label_, buf);
+    last_clock_min_ = 0;  // clock text is owned by the stock status bar
 }
 
 void CustomLcdDisplay::UpdateStatusBar(bool update_all) {
     LcdDisplay::UpdateStatusBar(update_all);
     DisplayLockGuard lock(this);
     ApplyIdleLayout();
-    RefreshClock();
 }

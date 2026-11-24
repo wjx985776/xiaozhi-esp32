@@ -37,6 +37,7 @@ private:
 
     // ==== [DSH] idle layout (reuses stock widgets, owns no new objects) ====
     int last_clock_min_ = -1;
+    bool layout_done_ = false;
     void ApplyIdleLayout();
     void RefreshClock();
 	void InitPortraitLUT();
