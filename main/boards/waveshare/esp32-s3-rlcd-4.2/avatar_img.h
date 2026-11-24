@@ -544,6 +544,7 @@ static const uint8_t avatar_map[] = {
 
 static const lv_image_dsc_t avatar_img = {
     .header = {
+        .magic = LV_IMAGE_HEADER_MAGIC,
         .cf = LV_COLOR_FORMAT_I1,
         .w = 260,
         .h = 260,
