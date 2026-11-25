@@ -35,10 +35,22 @@ private:
 	uint16_t (*PixelIndexLUT)[300];
 	uint8_t  (*PixelBitLUT  )[300];
 
-    // ==== [DSH] idle layout (reuses stock widgets, owns no new objects) ====
+    // ==== [DSH] idle layout ====
     int last_clock_min_ = -1;
     bool layout_done_ = false;
     lv_obj_t *avatar_obj_ = nullptr;
+
+    // [DSH] card-style dashboard: character on the left, two rounded cards on
+    // the right. These objects are owned by us and rebuilt if the theme wipes
+    // the screen.
+    lv_obj_t *card_time_ = nullptr;
+    lv_obj_t *card_hello_ = nullptr;
+    lv_obj_t *time_label_ = nullptr;
+    lv_obj_t *date_label_ = nullptr;
+    lv_obj_t *hello_label_ = nullptr;
+    lv_obj_t *mood_bar_ = nullptr;
+    bool refresh_clock_pending_ = false;
+    bool BuildDashboard();
     void ApplyIdleLayout();
     void RefreshClock();
 	void InitPortraitLUT();

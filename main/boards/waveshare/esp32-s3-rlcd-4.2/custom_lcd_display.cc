@@ -343,21 +343,140 @@ void CustomLcdDisplay::RLCD_Display() {
 }
 
 /* ==========================================================================
- * [DSH] Idle layout for the 400x300 RLCD.
+ * [DSH] Dashboard layout for the 400x300 RLCD, modelled on the reference
+ * desktop-gadget video: character on the left, rounded info cards on the right.
  *
  *   +--------------------------------------------------+
- *   |  top bar (tiny wifi / battery icons)             |
- *   |                                                  |
- *   |            [ emoji / character area ]            |  <- moved up
- *   |--------------------------------------------------|
- *   |  23:47                        周五 11月22日       |  <- bottom row
+ *   |  (wifi)                                    (bat)  |
+ *   |  +--------+   +--------------------------------+  |
+ *   |  |        |   |            21:19               |  |
+ *   |  | avatar |   |        周五 11月22日            |  |
+ *   |  |        |   +--------------------------------+  |
+ *   |  +--------+   +--------------------------------+  |
+ *   |  +------+     |  多云  9°C  体感 8°C            |  |
+ *   |  |######|     +--------------------------------+  |
+ *   |  +------+                                        |
  *   +--------------------------------------------------+
  *
- * IMPORTANT: this deliberately does NOT create new lv_obj_t objects.
- * Assets::RefreshTheme() later tears down and rebuilds the whole screen, which
- * would leave any object we own dangling. We only reposition / restyle widgets
- * that LcdDisplay::SetupUI() created and owns.
+ * Objects we create are tagged with a magic user-data value so a theme rebuild
+ * can be detected and the dashboard re-created rather than leaking dangling
+ * pointers.
  * ========================================================================== */
+
+static constexpr uint32_t kDashMagic = 0x44534831;  // "DSH1"
+
+static lv_obj_t *make_card(lv_obj_t *parent, int x, int y, int w, int h)
+{
+    lv_obj_t *card = lv_obj_create(parent);
+    lv_obj_remove_style_all(card);
+    lv_obj_set_pos(card, x, y);
+    lv_obj_set_size(card, w, h);
+    lv_obj_set_style_bg_color(card, lv_color_white(), 0);
+    lv_obj_set_style_bg_opa(card, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_color(card, lv_color_black(), 0);
+    lv_obj_set_style_border_width(card, 2, 0);
+    lv_obj_set_style_radius(card, 14, 0);
+    lv_obj_set_style_pad_all(card, 8, 0);
+    lv_obj_clear_flag(card, LV_OBJ_FLAG_SCROLLABLE);
+    return card;
+}
+
+bool CustomLcdDisplay::BuildDashboard()
+{
+    // If a previous build survived, nothing to do.
+    if (card_time_ != nullptr && lv_obj_is_valid(card_time_) &&
+        lv_obj_get_user_data(card_time_) == (void *)(uintptr_t)kDashMagic) {
+        return false;
+    }
+    card_time_ = nullptr;
+    card_hello_ = nullptr;
+    time_label_ = nullptr;
+    date_label_ = nullptr;
+    hello_label_ = nullptr;
+    mood_bar_ = nullptr;
+    avatar_obj_ = nullptr;
+
+    auto lvgl_theme = static_cast<LvglTheme *>(current_theme_);
+    if (lvgl_theme == nullptr) {
+        return false;
+    }
+    auto text_font = lvgl_theme->text_font()->font();
+    lv_obj_t *scr = lv_screen_active();
+    if (scr == nullptr) {
+        return false;
+    }
+
+    // Hide the stock widgets we are replacing.
+    if (status_bar_ != nullptr) lv_obj_add_flag(status_bar_, LV_OBJ_FLAG_HIDDEN);
+    if (bottom_bar_ != nullptr) lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
+    if (emoji_box_ != nullptr) lv_obj_add_flag(emoji_box_, LV_OBJ_FLAG_HIDDEN);
+
+    // --- left: character portrait -----------------------------------------
+    lv_obj_t *frame = lv_obj_create(scr);
+    lv_obj_remove_style_all(frame);
+    lv_obj_set_pos(frame, 14, 52);
+    lv_obj_set_size(frame, 150, 150);
+    lv_obj_set_style_border_color(frame, lv_color_black(), 0);
+    lv_obj_set_style_border_width(frame, 2, 0);
+    lv_obj_set_style_radius(frame, 12, 0);
+    lv_obj_clear_flag(frame, LV_OBJ_FLAG_SCROLLABLE);
+
+    avatar_obj_ = lv_image_create(frame);
+    lv_image_set_src(avatar_obj_, &avatar_img);
+    lv_obj_center(avatar_obj_);
+
+    // --- left bottom: mood bar --------------------------------------------
+    mood_bar_ = lv_bar_create(scr);
+    lv_obj_set_pos(mood_bar_, 14, 262);
+    lv_obj_set_size(mood_bar_, 150, 12);
+    lv_bar_set_range(mood_bar_, 0, 100);
+    lv_bar_set_value(mood_bar_, 72, LV_ANIM_OFF);
+    lv_obj_set_style_bg_color(mood_bar_, lv_color_white(), LV_PART_MAIN);
+    lv_obj_set_style_bg_opa(mood_bar_, LV_OPA_COVER, LV_PART_MAIN);
+    lv_obj_set_style_border_color(mood_bar_, lv_color_black(), LV_PART_MAIN);
+    lv_obj_set_style_border_width(mood_bar_, 2, LV_PART_MAIN);
+    lv_obj_set_style_radius(mood_bar_, 6, LV_PART_MAIN);
+    lv_obj_set_style_bg_color(mood_bar_, lv_color_black(), LV_PART_INDICATOR);
+    lv_obj_set_style_bg_opa(mood_bar_, LV_OPA_COVER, LV_PART_INDICATOR);
+    lv_obj_set_style_radius(mood_bar_, 6, LV_PART_INDICATOR);
+
+    // --- right top: clock card --------------------------------------------
+    card_time_ = make_card(scr, 178, 52, 208, 96);
+    lv_obj_set_user_data(card_time_, (void *)(uintptr_t)kDashMagic);
+
+    time_label_ = lv_label_create(card_time_);
+    lv_obj_set_style_text_font(time_label_, text_font, 0);
+    lv_obj_set_style_text_color(time_label_, lv_color_black(), 0);
+    lv_label_set_text(time_label_, "00:00");
+    lv_obj_align(time_label_, LV_ALIGN_TOP_MID, 0, 2);
+    // The builtin font tops out at 30px; scale it up so the clock reads across
+    // a desk. Pivot must be the top-centre or the glyphs drift off the card.
+    lv_obj_set_style_transform_pivot_x(time_label_, lv_pct(50), 0);
+    lv_obj_set_style_transform_pivot_y(time_label_, 0, 0);
+    lv_obj_set_style_transform_scale(time_label_, 620, 0);  // ~2.4x
+
+    date_label_ = lv_label_create(card_time_);
+    lv_obj_set_style_text_font(date_label_, text_font, 0);
+    lv_obj_set_style_text_color(date_label_, lv_color_black(), 0);
+    lv_label_set_text(date_label_, "");
+    lv_obj_align(date_label_, LV_ALIGN_BOTTOM_MID, 0, -2);
+
+    // --- right bottom: weather card ---------------------------------------
+    card_hello_ = make_card(scr, 178, 158, 208, 96);
+    lv_obj_set_user_data(card_hello_, (void *)(uintptr_t)kDashMagic);
+
+    hello_label_ = lv_label_create(card_hello_);
+    lv_obj_set_style_text_font(hello_label_, text_font, 0);
+    lv_obj_set_style_text_color(hello_label_, lv_color_black(), 0);
+    lv_label_set_long_mode(hello_label_, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(hello_label_, 190);
+    lv_obj_set_style_text_align(hello_label_, LV_TEXT_ALIGN_LEFT, 0);
+    lv_label_set_text(hello_label_, "你好阿哈");
+    lv_obj_align(hello_label_, LV_ALIGN_CENTER, 0, 0);
+
+    ESP_LOGI(TAG, "[DSH] dashboard built");
+    return true;
+}
 
 void CustomLcdDisplay::SetupUI() {
     // [DSH] Stock UI only. Any widget tweak happens from ApplyIdleLayout(),
@@ -366,56 +485,62 @@ void CustomLcdDisplay::SetupUI() {
 }
 
 void CustomLcdDisplay::ApplyIdleLayout() {
-    if (layout_done_) {
+    // Rebuild when the theme (re)created the screen underneath us.
+    BuildDashboard();
+
+    if (!lv_obj_is_valid(card_time_) || !lv_obj_is_valid(card_hello_)) {
         return;
     }
-    auto lvgl_theme = static_cast<LvglTheme*>(current_theme_);
-    if (lvgl_theme == nullptr) {
-        return;
-    }
-    auto text_font = lvgl_theme->text_font()->font();
 
-    // 1) Keep the emoji box centred but a little lower, clear of the top bar.
-    if (emoji_box_ != nullptr) {
-        lv_obj_align(emoji_box_, LV_ALIGN_CENTER, 0, 10);
-
-        // [DSH] Replace the stock robot glyph with the character portrait.
-        // emoji_label_ belongs to LcdDisplay; hide it instead of deleting it.
-        if (emoji_label_ != nullptr) {
-            lv_obj_add_flag(emoji_label_, LV_OBJ_FLAG_HIDDEN);
-        }
-        if (avatar_obj_ == nullptr || !lv_obj_is_valid(avatar_obj_)) {
-            avatar_obj_ = lv_image_create(emoji_box_);
-            lv_image_set_src(avatar_obj_, &avatar_img);
-            lv_obj_center(avatar_obj_);
-            ESP_LOGI(TAG, "[DSH] avatar image attached");
-        }
+    // Idle <-> chatting: the chat page needs the whole panel, so hide the cards.
+    bool chatting = false;
+    {
+        auto state = Application::GetInstance().GetDeviceState();
+        chatting = (state == kDeviceStateListening || state == kDeviceStateSpeaking);
     }
 
-    // 2) Subtitle: left-aligned, wrapped, full width. The bar itself is owned
-    //    by LcdDisplay and already anchored to the bottom of the screen.
-    if (chat_message_label_ != nullptr) {
-        lv_anim_delete(chat_message_label_, nullptr);
-        lv_label_set_long_mode(chat_message_label_, LV_LABEL_LONG_WRAP);
-        lv_obj_set_width(chat_message_label_, LV_HOR_RES - 32);
-        lv_obj_set_style_text_align(chat_message_label_, LV_TEXT_ALIGN_LEFT, 0);
-        lv_obj_set_style_text_font(chat_message_label_, text_font, 0);
-    }
-    if (bottom_bar_ != nullptr) {
-        lv_obj_set_style_pad_left(bottom_bar_, 16, 0);
-        lv_obj_set_style_pad_right(bottom_bar_, 16, 0);
+    if (chatting) {
+        lv_obj_add_flag(card_time_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(card_hello_, LV_OBJ_FLAG_HIDDEN);
+        if (mood_bar_ != nullptr) lv_obj_add_flag(mood_bar_, LV_OBJ_FLAG_HIDDEN);
+        if (bottom_bar_ != nullptr) lv_obj_clear_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_clear_flag(card_time_, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_clear_flag(card_hello_, LV_OBJ_FLAG_HIDDEN);
+        if (mood_bar_ != nullptr) lv_obj_clear_flag(mood_bar_, LV_OBJ_FLAG_HIDDEN);
+        if (bottom_bar_ != nullptr) lv_obj_add_flag(bottom_bar_, LV_OBJ_FLAG_HIDDEN);
     }
 
-    layout_done_ = true;
-    ESP_LOGI(TAG, "[DSH] idle layout applied");
+    refresh_clock_pending_ = true;
 }
 
 void CustomLcdDisplay::RefreshClock() {
-    last_clock_min_ = 0;  // clock text is owned by the stock status bar
+    if (!lv_obj_is_valid(time_label_)) {
+        return;
+    }
+    time_t now = time(nullptr);
+    struct tm info;
+    localtime_r(&now, &info);
+    if (info.tm_min == last_clock_min_) {
+        return;
+    }
+    last_clock_min_ = info.tm_min;
+
+    char buf[16];
+    snprintf(buf, sizeof(buf), "%02d:%02d", info.tm_hour, info.tm_min);
+    lv_label_set_text(time_label_, buf);
+
+    static const char *kWeek[] = {"周日", "周一", "周二", "周三", "周四", "周五", "周六"};
+    char date_buf[32];
+    snprintf(date_buf, sizeof(date_buf), "%s %d月%d日", kWeek[info.tm_wday],
+             info.tm_mon + 1, info.tm_mday);
+    lv_label_set_text(date_label_, date_buf);
+    refresh_clock_pending_ = false;
 }
 
 void CustomLcdDisplay::UpdateStatusBar(bool update_all) {
     LcdDisplay::UpdateStatusBar(update_all);
     DisplayLockGuard lock(this);
     ApplyIdleLayout();
+    RefreshClock();
 }
